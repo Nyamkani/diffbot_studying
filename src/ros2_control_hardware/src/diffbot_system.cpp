@@ -22,6 +22,47 @@
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/int32.hpp"
+
+
+using std::placeholders::_1;
+
+class encoder : public rclcpp::Node
+{
+  public:
+    encoder(): Node("encoders_hw")
+    {
+      encoder_left_subs = this->create_subscription<std_msgs::msg::Int32>("encoder_left", 10, std::bind(&encoder::get_encoder_left, this, _1));
+      encoder_right_subs = this->create_subscription<std_msgs::msg::Int32>("encoder_right", 10, std::bind(&encoder::get_encoder_right, this, _1));
+    }
+
+
+
+  private:
+    int32_t get_encoder_left(const std_msgs::msg::Int32 & msg)
+    {
+      RCLCPP_INFO(this->get_logger(), "I heard: '%d'", msg.data);
+      std_msgs::msg::Int32 temp = msg;
+      this->encoder_left_temp = (int32_t) temp.data;
+      return this->encoder_left_temp;
+    }
+
+    int32_t get_encoder_right(const std_msgs::msg::Int32 & msg)
+    {
+      RCLCPP_INFO(this->get_logger(), "I heard: '%d'", msg.data);
+      std_msgs::msg::Int32 temp = msg;
+      this->encoder_left_temp = (int32_t) temp.data;
+      return this->encoder_left_temp;
+    }
+
+    int32_t encoder_left_temp;
+    int32_t encoder_right_temp;
+
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr encoder_left_subs;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr encoder_right_subs;
+};
+
+
 
 namespace ros2_control_hardware
 {
