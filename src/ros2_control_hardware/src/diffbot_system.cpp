@@ -24,53 +24,59 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
 
+#include "ros2_control_bridge/srv/encoderservice.hpp"
+
 
 using std::placeholders::_1;
-
-class encoder : public rclcpp::Node
-{
-  public:
-    encoder(): Node("encoders_hw")
-    {
-      encoder_left_subs = this->create_subscription<std_msgs::msg::Int32>("encoder_left", 10, std::bind(&encoder::get_encoder_left, this, _1));
-      encoder_right_subs = this->create_subscription<std_msgs::msg::Int32>("encoder_right", 10, std::bind(&encoder::get_encoder_right, this, _1));
-    }
-
-
-
-  private:
-    int32_t get_encoder_left(const std_msgs::msg::Int32 & msg)
-    {
-      RCLCPP_INFO(this->get_logger(), "I heard: '%d'", msg.data);
-      std_msgs::msg::Int32 temp = msg;
-      this->encoder_left_temp = (int32_t) temp.data;
-      return this->encoder_left_temp;
-    }
-
-    int32_t get_encoder_right(const std_msgs::msg::Int32 & msg)
-    {
-      RCLCPP_INFO(this->get_logger(), "I heard: '%d'", msg.data);
-      std_msgs::msg::Int32 temp = msg;
-      this->encoder_left_temp = (int32_t) temp.data;
-      return this->encoder_left_temp;
-    }
-
-    int32_t encoder_left_temp;
-    int32_t encoder_right_temp;
-
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr encoder_left_subs;
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr encoder_right_subs;
-};
-
-
+using std::placeholders::_2;
+using namespace std::chrono_literals;
 
 namespace ros2_control_hardware
 {
+  int32_t temp1;
+  int32_t temp2;
+  bool left_flag = false;
+  bool right_flag= false;
+
+  // class encoder : public rclcpp::Node
+  // {
+  //   public:
+  //     encoder(): Node("lgv_encoders_hw_interface")
+  //     {
+  //       receive_interface = this->create_client<ros2_control_bridge::srv::Encoderservice>("recv_encoder_val", std::bind(&encoder::get_encoder_val,this,_1,_2));
+  //     }
+    
+  //   void get_encoder_val(const std::shared_ptr<ros2_control_bridge::srv::Encoderservice::Request>  request
+  //      ,std::shared_ptr<ros2_control_bridge::srv::Encoderservice::Response>  response)
+  //   {
+
+  //     while (!receive_interface->wait_for_service(1s)) {
+  //      if (!rclcpp::ok()) {RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");}
+  //      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+  //     }
+  //       auto result = receive_interface->async_send_request(request);
+  //       if (rclcpp::spin_until_future_complete(receive_interface, result) ==
+  //       rclcpp::FutureReturnCode::SUCCESS)
+  //       {
+  //       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Sum: %", result.get()->to_encoder_left);
+  //       } else {
+  //       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");   
+  //   }
+  //   }
+  //   private:
+  //     int32_t encoder_left_temp;
+  //     int32_t encoder_right_temp;
+
+  //     rclcpp::Client<ros2_control_bridge::srv::Encoderservice>::SharedPtr receive_interface;
+  // };
+
 CallbackReturn DiffBotSystemHardware::on_init(const hardware_interface::HardwareInfo & info)
 {
   base_x_ = 0.0;
   base_y_ = 0.0;
   base_theta_ = 0.0;
+
+
 
   if (hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS)
   {
@@ -215,7 +221,38 @@ CallbackReturn DiffBotSystemHardware::on_deactivate(
 hardware_interface::return_type DiffBotSystemHardware::read()
 {
   RCLCPP_INFO(rclcpp::get_logger("DiffBotSystemHardware"), "Reading...");
+  //auto test_node = new encoder();
+  //while((left_flag&right_flag) != 1) spin_some(test_node);
 
+    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("lgv_encoders_hw_interface");
+    rclcpp::Client<ros2_control_bridge::srv::Encoderservice>::SharedPtr client =
+    node->create_client<ros2_control_bridge::srv::Encoderservice>("encoder_val");
+
+  auto request = std::make_shared<ros2_control_bridge::srv::Encoderservice::Request>();
+  request->state =true;
+
+  while (!client->wait_for_service(1s)) {
+    if (!rclcpp::ok()) {
+      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting."); break;
+    }
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+  }
+    auto result = client->async_send_request(request);
+  // Wait for the result.
+  if (rclcpp::spin_until_future_complete(node, result) ==
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "left: %0.5f,right: %0.5f ", result.get()->to_encoder_left,result.get()->to_encoder_right);
+  } else {
+    RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");
+  }
+
+  hw_commands_[0]= (double)result.get()->to_encoder_left;
+  hw_commands_[1]=(double)result.get()->to_encoder_right;
+
+
+       RCLCPP_INFO( rclcpp::get_logger("DiffBotSystemHardware"),
+      "Got value from thread: %d, %d .",temp1,temp2);
   double radius = 0.02;  // radius of the wheels
   double dist_w = 0.1;   // distance between the wheels
   double dt = 0.01;      // Control period
