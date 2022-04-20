@@ -33,42 +33,40 @@ using namespace std::chrono_literals;
 
 namespace ros2_control_hardware
 {
-  int32_t temp1;
-  int32_t temp2;
-  bool left_flag = false;
-  bool right_flag= false;
+  double temp1;
+  double temp2;
 
-  // class encoder : public rclcpp::Node
-  // {
-  //   public:
-  //     encoder(): Node("lgv_encoders_hw_interface")
-  //     {
-  //       receive_interface = this->create_client<ros2_control_bridge::srv::Encoderservice>("recv_encoder_val", std::bind(&encoder::get_encoder_val,this,_1,_2));
-  //     }
-    
-  //   void get_encoder_val(const std::shared_ptr<ros2_control_bridge::srv::Encoderservice::Request>  request
-  //      ,std::shared_ptr<ros2_control_bridge::srv::Encoderservice::Response>  response)
-  //   {
+ void get_values_client(double& encoder_left_val, double& encoder_right_val)
+ {
+    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("lgv_encoders_hw_interface");
+    rclcpp::Client<ros2_control_bridge::srv::Encoderservice>::SharedPtr client =
+    node->create_client<ros2_control_bridge::srv::Encoderservice>("encoder_val");
 
-  //     while (!receive_interface->wait_for_service(1s)) {
-  //      if (!rclcpp::ok()) {RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");}
-  //      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-  //     }
-  //       auto result = receive_interface->async_send_request(request);
-  //       if (rclcpp::spin_until_future_complete(receive_interface, result) ==
-  //       rclcpp::FutureReturnCode::SUCCESS)
-  //       {
-  //       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Sum: %", result.get()->to_encoder_left);
-  //       } else {
-  //       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");   
-  //   }
-  //   }
-  //   private:
-  //     int32_t encoder_left_temp;
-  //     int32_t encoder_right_temp;
+   auto request = std::make_shared<ros2_control_bridge::srv::Encoderservice::Request>();
+    request->state =true;
 
-  //     rclcpp::Client<ros2_control_bridge::srv::Encoderservice>::SharedPtr receive_interface;
-  // };
+    while (!client->wait_for_service(1s)) 
+    {
+      if (!rclcpp::ok()) 
+      {
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting."); break;
+      }
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+    }
+    auto result = client->async_send_request(request);
+
+    // Wait for the result.
+   if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS)
+    {
+     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "left: %0.5f,right: %0.5f ", result.get()->to_encoder_left,result.get()->to_encoder_right);
+      encoder_left_val= (double)result.get()->to_encoder_left;
+      encoder_right_val=(double)result.get()->to_encoder_right;
+    } 
+    else 
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service encoder");
+    }
+  }
 
 CallbackReturn DiffBotSystemHardware::on_init(const hardware_interface::HardwareInfo & info)
 {
@@ -221,38 +219,10 @@ CallbackReturn DiffBotSystemHardware::on_deactivate(
 hardware_interface::return_type DiffBotSystemHardware::read()
 {
   RCLCPP_INFO(rclcpp::get_logger("DiffBotSystemHardware"), "Reading...");
-  //auto test_node = new encoder();
-  //while((left_flag&right_flag) != 1) spin_some(test_node);
 
-    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("lgv_encoders_hw_interface");
-    rclcpp::Client<ros2_control_bridge::srv::Encoderservice>::SharedPtr client =
-    node->create_client<ros2_control_bridge::srv::Encoderservice>("encoder_val");
+  get_values_client(hw_positions_[0], hw_positions_[1]);
+  RCLCPP_INFO( rclcpp::get_logger("DiffBotSystemHardware"), "Got value from thread: %.5f, %.5f .",hw_positions_[0],hw_positions_[1]);
 
-  auto request = std::make_shared<ros2_control_bridge::srv::Encoderservice::Request>();
-  request->state =true;
-
-  while (!client->wait_for_service(1s)) {
-    if (!rclcpp::ok()) {
-      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting."); break;
-    }
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-  }
-    auto result = client->async_send_request(request);
-  // Wait for the result.
-  if (rclcpp::spin_until_future_complete(node, result) ==
-    rclcpp::FutureReturnCode::SUCCESS)
-  {
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "left: %0.5f,right: %0.5f ", result.get()->to_encoder_left,result.get()->to_encoder_right);
-  } else {
-    RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");
-  }
-
-  hw_commands_[0]= (double)result.get()->to_encoder_left;
-  hw_commands_[1]=(double)result.get()->to_encoder_right;
-
-
-       RCLCPP_INFO( rclcpp::get_logger("DiffBotSystemHardware"),
-      "Got value from thread: %d, %d .",temp1,temp2);
   double radius = 0.02;  // radius of the wheels
   double dist_w = 0.1;   // distance between the wheels
   double dt = 0.01;      // Control period
